@@ -19,9 +19,9 @@ import { useState } from "react";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/platforms", label: "Mes plateformes", icon: Link2 },
   { href: "/publish", label: "Publier une vidéo", icon: Upload },
   { href: "/videos", label: "Mes vidéos", icon: Video },
+  { href: "/platforms", label: "Mes plateformes", icon: Link2 },
   { href: "/settings", label: "Paramètres", icon: Settings },
 ];
 
