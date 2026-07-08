@@ -10,7 +10,6 @@ import {
   type ReactNode,
 } from "react";
 import { DEFAULT_PLATFORMS, MOCK_VIDEOS } from "@/data/mock";
-import { getPlatformConnector } from "@/services/platforms";
 import type {
   Platform,
   PlatformAnalytics,
@@ -43,8 +42,10 @@ interface AppContextValue {
   platforms: Platform[];
   connectPlatform: (id: PlatformId) => Promise<void>;
   disconnectPlatform: (id: PlatformId) => Promise<void>;
+  refreshPlatformConnections: () => Promise<void>;
   videos: Video[];
   publishVideo: (input: PublishVideoInput) => Promise<void>;
+  syncVideoAnalytics: (videoId: string) => Promise<void>;
   getVideo: (id: string) => Video | undefined;
 }
 
@@ -94,6 +95,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
     );
   }, [user, platforms, videos, hydrated]);
 
+  const refreshPlatformConnections = useCallback(async () => {
+    if (!user) return;
+    const response = await fetch(
+      `/api/platforms/connections?userId=${encodeURIComponent(user.id)}`,
+      { cache: "no-store" }
+    );
+    if (!response.ok) return;
+    const data = (await response.json()) as { platforms: Platform[] };
+    setPlatforms(data.platforms);
+  }, [user]);
+
+  useEffect(() => {
+    if (!hydrated || !user) return;
+    void refreshPlatformConnections();
+  }, [hydrated, user, refreshPlatformConnections]);
+
   const login = useCallback(async (email: string, _password: string) => {
     await new Promise((r) => setTimeout(r, 600));
     if (!email.includes("@")) {
@@ -136,110 +153,73 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, []);
 
-  const connectPlatform = useCallback(async (id: PlatformId) => {
-    const connector = getPlatformConnector(id);
-    if (!connector) return;
+  const connectPlatform = useCallback(
+    async (id: PlatformId) => {
+      const userId = user?.id ?? DEMO_USER.id;
+      window.location.href = `/api/platforms/${id}/connect?userId=${encodeURIComponent(userId)}&returnTo=${encodeURIComponent("/platforms")}`;
+    },
+    [user]
+  );
 
-    const result = await connector.connect();
-    if (result.success) {
-      setPlatforms((prev) =>
-        prev.map((p) =>
-          p.id === id
-            ? { ...p, connected: true, username: result.username }
-            : p
+  const disconnectPlatform = useCallback(
+    async (id: PlatformId) => {
+      const userId = user?.id ?? DEMO_USER.id;
+      const response = await fetch(`/api/platforms/${id}/disconnect`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId }),
+      });
+      if (response.ok) {
+        await refreshPlatformConnections();
+      }
+    },
+    [refreshPlatformConnections, user]
+  );
+
+  const runPublication = useCallback(
+    async (video: Video) => {
+      setVideos((prev) =>
+        prev.map((v) =>
+          v.id === video.id ? { ...v, status: "pending" as const } : v
         )
       );
-    }
-  }, []);
 
-  const disconnectPlatform = useCallback(async (id: PlatformId) => {
-    const connector = getPlatformConnector(id);
-    if (!connector) return;
-
-    const result = await connector.disconnect();
-    if (result.success) {
-      setPlatforms((prev) =>
-        prev.map((p) =>
-          p.id === id
-            ? { ...p, connected: false, username: undefined }
-            : p
-        )
-      );
-    }
-  }, []);
-
-  const runPublication = useCallback(async (video: Video) => {
-    const thumbnail = video.thumbnail;
-
-    setVideos((prev) =>
-      prev.map((v) =>
-        v.id === video.id ? { ...v, status: "pending" as const } : v
-      )
-    );
-
-    for (const platformId of video.platforms) {
-      const connector = getPlatformConnector(platformId);
-      if (!connector) continue;
-
-      const result = await connector.publishVideo({
-        videoId: video.id,
-        title: video.title,
-        description: video.description,
-        tags: video.tags,
-        videoUrl: thumbnail,
+      const response = await fetch("/api/publish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: user?.id ?? DEMO_USER.id,
+          videoId: video.id,
+          title: video.title,
+          description: video.description,
+          tags: video.tags,
+          platforms: video.platforms,
+          videoUrl: video.thumbnail,
+        }),
       });
 
+      if (!response.ok) return;
+      const data = (await response.json()) as {
+        analytics: PlatformAnalytics[];
+        status: Video["status"];
+      };
+
       setVideos((prev) =>
-        prev.map((v) => {
-          if (v.id !== video.id) return v;
-          const updatedAnalytics = v.analytics.map((a) => {
-            if (a.platformId !== platformId) return a;
-            if (result.success) {
-              const mockData = {
-                views: Math.floor(Math.random() * 30000) + 500,
-                likes: Math.floor(Math.random() * 3000) + 50,
-                comments: Math.floor(Math.random() * 300) + 10,
-                shares: Math.floor(Math.random() * 500) + 5,
-              };
-              const engagementRate =
-                ((mockData.likes + mockData.comments + mockData.shares) /
-                  mockData.views) *
-                100;
-              return {
-                ...a,
-                status: "published" as const,
-                ...mockData,
-                engagementRate,
-                publishedUrl: result.publishedUrl,
-              };
-            }
-            return {
-              ...a,
-              status: "error" as const,
-              errorMessage: result.error,
-            };
-          });
-
-          const hasError = updatedAnalytics.some((a) => a.status === "error");
-          const allPublished = updatedAnalytics.every(
-            (a) => a.status === "published"
-          );
-
-          return {
-            ...v,
-            analytics: updatedAnalytics,
-            status: hasError
-              ? allPublished
-                ? ("partial" as const)
-                : ("error" as const)
-              : ("published" as const),
-            publishedAt: new Date().toISOString(),
-            scheduledAt: undefined,
-          };
-        })
+        prev.map((v) =>
+          v.id === video.id
+            ? {
+                ...v,
+                analytics: data.analytics,
+                status: data.status,
+                publishedAt: new Date().toISOString(),
+                scheduledAt: undefined,
+              }
+            : v
+        )
       );
-    }
-  }, []);
+    },
+    [user]
+  );
 
   const publishVideo = useCallback(
     async (input: PublishVideoInput) => {
@@ -287,6 +267,53 @@ export function AppProvider({ children }: { children: ReactNode }) {
     },
     [runPublication]
   );
+
+  const syncVideoAnalytics = useCallback(async (videoId: string) => {
+    const response = await fetch("/api/analytics/sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ videoId }),
+    });
+    if (!response.ok) return;
+    const data = (await response.json()) as {
+      snapshots: Array<{
+        platform: PlatformId;
+        views: number;
+        likes: number;
+        comments: number;
+        shares: number;
+        engagementRate: number;
+        publishedUrl?: string;
+        status: "pending" | "published" | "error";
+      }>;
+    };
+
+    setVideos((prev) =>
+      prev.map((video) =>
+        video.id !== videoId
+          ? video
+          : {
+              ...video,
+              analytics: video.analytics.map((entry) => {
+                const snapshot = data.snapshots.find(
+                  (item) => item.platform === entry.platformId
+                );
+                if (!snapshot) return entry;
+                return {
+                  ...entry,
+                  status: snapshot.status,
+                  views: snapshot.views,
+                  likes: snapshot.likes,
+                  comments: snapshot.comments,
+                  shares: snapshot.shares,
+                  engagementRate: snapshot.engagementRate,
+                  publishedUrl: snapshot.publishedUrl,
+                };
+              }),
+            }
+      )
+    );
+  }, []);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -338,8 +365,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         platforms,
         connectPlatform,
         disconnectPlatform,
+        refreshPlatformConnections,
         videos,
         publishVideo,
+        syncVideoAnalytics,
         getVideo,
       }}
     >

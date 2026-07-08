@@ -1,6 +1,6 @@
 "use client";
 
-import { use } from "react";
+import { use, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useApp } from "@/contexts/app-context";
@@ -17,8 +17,14 @@ export default function VideoAnalyticsPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
-  const { getVideo } = useApp();
+  const { getVideo, syncVideoAnalytics } = useApp();
   const video = getVideo(id);
+
+  useEffect(() => {
+    if (video && video.status !== "scheduled") {
+      void syncVideoAnalytics(video.id);
+    }
+  }, [syncVideoAnalytics, video]);
 
   if (!video) {
     return (

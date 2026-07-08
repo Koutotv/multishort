@@ -1,6 +1,9 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { PlatformCard } from "@/components/platforms/platform-card";
+import { useApp } from "@/contexts/app-context";
 import type { PlatformId } from "@/types";
 
 const platformIds: PlatformId[] = [
@@ -13,6 +16,29 @@ const platformIds: PlatformId[] = [
 ];
 
 export default function PlatformsPage() {
+  const { refreshPlatformConnections } = useApp();
+  const searchParams = useSearchParams();
+  const [message, setMessage] = useState<string | null>(null);
+  const [messageTone, setMessageTone] = useState<"success" | "error">("success");
+
+  useEffect(() => {
+    void refreshPlatformConnections();
+  }, [refreshPlatformConnections]);
+
+  useEffect(() => {
+    const success = searchParams.get("platformSuccess");
+    const error = searchParams.get("platformError");
+    if (success) {
+      setMessage(success);
+      setMessageTone("success");
+    } else if (error) {
+      setMessage(error);
+      setMessageTone("error");
+    } else {
+      setMessage(null);
+    }
+  }, [searchParams]);
+
   return (
     <div className="space-y-8">
       <div>
@@ -22,6 +48,18 @@ export default function PlatformsPage() {
           plateforme
         </p>
       </div>
+
+      {message && (
+        <div
+          className={`rounded-2xl px-5 py-4 text-sm ${
+            messageTone === "success"
+              ? "border border-emerald-100 bg-emerald-50 text-emerald-700"
+              : "border border-red-100 bg-red-50 text-red-700"
+          }`}
+        >
+          {message}
+        </div>
+      )}
 
       <div className="rounded-2xl border border-violet-100 bg-violet-50 p-5">
         <p className="text-sm font-medium text-violet-900">
@@ -41,8 +79,9 @@ export default function PlatformsPage() {
 
       <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 p-6 text-center">
         <p className="text-sm text-slate-500">
-          Les connexions utilisent des API simulées pour le MVP. La structure
-          est prête pour intégrer les vraies API OAuth de chaque plateforme.
+          Les cartes utilisent maintenant un vrai flow OAuth côté serveur quand
+          les clés développeur sont configurées. Sans configuration complète,
+          elles affichent un statut de setup requis.
         </p>
       </div>
     </div>

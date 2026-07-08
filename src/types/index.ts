@@ -7,6 +7,13 @@ export type PlatformId =
   | "twitter";
 
 export type PublicationStatus = "pending" | "published" | "error";
+export type ConnectionStatus =
+  | "connected"
+  | "disconnected"
+  | "expired"
+  | "pending"
+  | "setup_required"
+  | "error";
 
 export type VideoStatus =
   | "pending"
@@ -21,6 +28,10 @@ export interface Platform {
   color: string;
   connected: boolean;
   username?: string;
+  status?: ConnectionStatus;
+  platformAccountId?: string;
+  lastError?: string;
+  connectedAt?: string;
 }
 
 export interface PlatformAnalytics {
@@ -64,4 +75,28 @@ export interface UserProfile {
   email: string;
   fullName: string;
   avatarUrl?: string;
+}
+
+export interface PlatformConnectionRecord {
+  id: string;
+  userId: string;
+  platform: PlatformId;
+  platformAccountId?: string;
+  username?: string;
+  status: ConnectionStatus;
+  scopes?: string[];
+  connectedAt?: string;
+  expiresAt?: string;
+  lastError?: string;
+}
+
+export interface VideoPublicationRecord {
+  id: string;
+  videoId: string;
+  platform: PlatformId;
+  remotePostId?: string;
+  publishedUrl?: string;
+  status: PublicationStatus;
+  publishedAt?: string;
+  lastError?: string;
 }

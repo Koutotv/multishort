@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { PlatformIcon } from "@/components/ui/platform-icon";
 import { PLATFORM_META } from "@/data/mock";
 import type { PlatformId } from "@/types";
-import { CheckCircle2, Circle } from "lucide-react";
+import { AlertCircle, CheckCircle2, Circle, RefreshCcw } from "lucide-react";
 
 export function PlatformCard({ platformId }: { platformId: PlatformId }) {
   const { platforms, connectPlatform, disconnectPlatform } = useApp();
@@ -28,6 +28,19 @@ export function PlatformCard({ platformId }: { platformId: PlatformId }) {
     }
   };
 
+  const statusLabel =
+    platform.status === "connected"
+      ? "Connecté"
+      : platform.status === "expired"
+        ? "Expiré"
+        : platform.status === "pending"
+          ? "En attente"
+          : platform.status === "error"
+            ? "Erreur"
+            : platform.status === "setup_required"
+              ? "Configuration requise"
+              : "Non connecté";
+
   return (
     <Card hover className="flex flex-col">
       <div className="flex items-start justify-between">
@@ -38,17 +51,25 @@ export function PlatformCard({ platformId }: { platformId: PlatformId }) {
           <PlatformIcon platform={platformId} size="lg" />
         </div>
         <div className="flex items-center gap-1.5">
-          {platform.connected ? (
+          {platform.status === "error" ? (
+            <AlertCircle className="h-4 w-4 text-red-500" />
+          ) : platform.connected ? (
             <CheckCircle2 className="h-4 w-4 text-emerald-500" />
           ) : (
             <Circle className="h-4 w-4 text-slate-300" />
           )}
           <span
             className={`text-xs font-medium ${
-              platform.connected ? "text-emerald-600" : "text-slate-400"
+              platform.connected
+                ? "text-emerald-600"
+                : platform.status === "error"
+                  ? "text-red-500"
+                  : platform.status === "setup_required"
+                    ? "text-amber-600"
+                    : "text-slate-400"
             }`}
           >
-            {platform.connected ? "Connecté" : "Non connecté"}
+            {statusLabel}
           </span>
         </div>
       </div>
@@ -61,6 +82,9 @@ export function PlatformCard({ platformId }: { platformId: PlatformId }) {
             {platform.username}
           </p>
         )}
+        {platform.lastError && (
+          <p className="mt-2 text-xs text-red-500">{platform.lastError}</p>
+        )}
       </div>
 
       <Button
@@ -69,7 +93,16 @@ export function PlatformCard({ platformId }: { platformId: PlatformId }) {
         onClick={handleToggle}
         loading={loading}
       >
-        {platform.connected ? "Déconnecter" : "Connecter"}
+        {platform.connected ? (
+          "Déconnecter"
+        ) : platform.status === "expired" ? (
+          <>
+            <RefreshCcw className="h-4 w-4" />
+            Reconnecter
+          </>
+        ) : (
+          "Connecter"
+        )}
       </Button>
     </Card>
   );
